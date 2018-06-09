@@ -26,13 +26,12 @@ class ViewController: JSQMessagesViewController {
     var incomingAvatar: JSQMessagesAvatarImage!
     var outgoingAvatar: JSQMessagesAvatarImage!
     
-    // 返答メッセージに関する辞書
-    let respond: [String:String] = [
-        "部屋のテイスト":"次のどのテイストのお部屋が好きですか？\nナチュラルor落ち着いたorクール"
-    ]
-    
     // Repl-AIのユーザーIDを保存する変数
     var id: String!
+    // 入力したメッセージを保存する変数
+    var msg: String!
+    // 返答メッセージを保存する変数
+    var response: String!
     
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -59,15 +58,6 @@ class ViewController: JSQMessagesViewController {
         //メッセージデータの配列を初期化
         self.messages = []
         self.setupFirebase()
-        
-        // 過去のメッセージ取得後に会話開始時のメッセージを表示
-        DispatchQueue.main.asyncAfter(deadline: DispatchTime.now() + .seconds(2)) {
-            self.testRecvMessage(responseText: "何か手伝えることはありますか？\n部屋のテイストor部屋が狭いor家具の配置")
-        }
-        
-        // Repl-AIのユーザーID取得
-        userId()
-        
     }
     
     override func didReceiveMemoryWarning() {
@@ -105,24 +95,13 @@ class ViewController: JSQMessagesViewController {
         post1Ref.setValue(post1)
         self.finishSendingMessage(animated: true)
         
-        // Sendの内容に合わせて返答内容を変更する
-        DispatchQueue.main.asyncAfter(deadline: DispatchTime.now() + .milliseconds(50)) {
-            guard let messageText = self.respond[text] else {
-                self.testRecvMessage(responseText: "選択肢の中から選んで入力してください！")
-                return
-            }
-            // 返答メッセージに関する辞書から値を取り出す
-            self.testRecvMessage(responseText: messageText)
-        }
+        // 入力したテキストをdialogue()のパラメータへ渡す
+        self.msg = text
+        
+        // Repl-AIからユーザーIDと対話内容を取得し返答する
+        userId()
     }
-    
-    // メッセージに対して返答する
-    func testRecvMessage(responseText: String) {
-        let post2 = ["from": "user2", "name": "B", "text":responseText]
-        let post2Ref = self.ref.childByAutoId()
-        post2Ref.setValue(post2)
-    }
-    
+
     // Repl-AIのユーザーIDを取得
     func userId() {
         let URL = "https://api.repl-ai.jp/v1/registration"
@@ -140,6 +119,9 @@ class ViewController: JSQMessagesViewController {
                 let json = JSON(value)
                 print(json)
                 self.id = json["appUserId"].stringValue
+                
+
+                
                 self.dialogue()
             case .failure(let error):
                 print(error)
@@ -157,7 +139,7 @@ class ViewController: JSQMessagesViewController {
         let parameters: [String: Any] = [
             "appUserId": self.id,
             "botId": "sample",
-            "voiceText": "ランチ食べに行きたい",
+            "voiceText": self.msg,
             "initTalkingFlag": false,
             "initTopicId": "docomoapi"
         ]
@@ -167,11 +149,19 @@ class ViewController: JSQMessagesViewController {
             case .success(let value):
                 let json = JSON(value)
                 print(json)
+                self.response = json["systemText"]["expression"].stringValue
+                self.receiveMessage()
             case .failure(let error):
                 print(error)
             }
         }
+    }
     
+    // メッセージに対して返答した内容をFirebaseに送信、保存する
+    func receiveMessage() {
+        let post2 = ["from": "user2", "name": "B", "text":response]
+        let post2Ref = self.ref.childByAutoId()
+        post2Ref.setValue(post2)
     }
     
     // アイテムごとに参照するメッセージデータを返す
