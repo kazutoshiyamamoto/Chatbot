@@ -26,12 +26,12 @@ class ViewController: JSQMessagesViewController {
     var incomingAvatar: JSQMessagesAvatarImage!
     var outgoingAvatar: JSQMessagesAvatarImage!
     
-    // Repl-AIのユーザーIDを保存する変数
+    // Repl-AIのユーザーIDを保持するプロパティ
     var id: String!
-    // 入力したメッセージを保存する変数
+    // 送信したメッセージを保持するプロパティ
     var msg: String!
-    // 返答メッセージを保存する変数
-    var response: String!
+    // Repl-AIからの返答メッセージを保持するプロパティ
+    var responseMsg: String!
     
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -52,8 +52,8 @@ class ViewController: JSQMessagesViewController {
         self.outgoingBubble = bubbleFactory?.outgoingMessagesBubbleImage(with: UIColor.jsq_messageBubbleBlue())
         
         // アバターの設定
-        self.incomingAvatar = JSQMessagesAvatarImageFactory.avatarImage(with: UIImage(named: "snowman")!, diameter: 64)
-        self.outgoingAvatar = JSQMessagesAvatarImageFactory.avatarImage(with: UIImage(named: "santaclaus")!, diameter: 64)
+        self.incomingAvatar = JSQMessagesAvatarImageFactory.avatarImage(with: UIImage(named: "{アバター画像ファイル名}")!, diameter: 64)
+        self.outgoingAvatar = JSQMessagesAvatarImageFactory.avatarImage(with: UIImage(named: "{アバター画像ファイル名}")!, diameter: 64)
         
         //メッセージデータの配列を初期化
         self.messages = []
@@ -65,12 +65,12 @@ class ViewController: JSQMessagesViewController {
         // Dispose of any resources that can be recreated.
     }
     
-    // データベースからデータを取得する
+    // Firebaseからデータを取得する
     func setupFirebase() {
         // DatabaseReferenceのインスタンス化
         self.ref = Database.database().reference()
         
-        // 最新5件のデータをデータベースから取得する
+        // 最新10件のデータをデータベースから取得する
         // 最新のデータが追加されるたびに最新データを取得する
         self.ref.queryLimited(toLast: 10).observe(DataEventType.childAdded, with: { (snapshot) -> Void in
             let snapshotValue = snapshot.value as! NSDictionary
@@ -89,39 +89,35 @@ class ViewController: JSQMessagesViewController {
         //メッセージの送信処理を完了する(画面上にメッセージが表示される)
         self.finishReceivingMessage(animated: true)
         
-        //Firebaseにデータを送信、保存する
+        //送信したメッセージをFirebaseに保存する
         let post1 = ["from": senderId, "name": senderDisplayName, "text":text]
         let post1Ref = self.ref.childByAutoId()
         post1Ref.setValue(post1)
         self.finishSendingMessage(animated: true)
         
-        // 入力したテキストをdialogue()のパラメータへ渡す
+        // 送信したメッセージをdialogue()のパラメータへ渡す
         self.msg = text
         
-        // Repl-AIからユーザーIDと対話内容を取得し返答する
+        // Repl-AIからユーザーIDと返答メッセージを取得する
         userId()
     }
 
     // Repl-AIのユーザーIDを取得
     func userId() {
-        let URL = "https://api.repl-ai.jp/v1/registration"
+        let URL = "{リクエストURL}"
         let headers = [
             "Content-Type": "application/json",
-            "x-api-key": ""
+            "x-api-key": "{APIキー}"
         ]
         let parameters = [
-            "botId": "sample"
+            "botId": "{ボットID}"
         ]
         
         Alamofire.request(URL, method: .post, parameters: parameters, encoding: JSONEncoding.default, headers: headers).validate().responseJSON { response in
             switch response.result {
             case .success(let value):
                 let json = JSON(value)
-                print(json)
                 self.id = json["appUserId"].stringValue
-                
-
-                
                 self.dialogue()
             case .failure(let error):
                 print(error)
@@ -131,35 +127,34 @@ class ViewController: JSQMessagesViewController {
     
     // Repl-AIの対話情報の取得
     func dialogue() {
-        let URL = "https://api.repl-ai.jp/v1/dialogue"
+        let URL = "{リクエストURL}"
         let headers = [
             "Content-Type": "application/json",
-            "x-api-key": ""
+            "x-api-key": "{APIキー}"
         ]
         let parameters: [String: Any] = [
             "appUserId": self.id,
-            "botId": "sample",
+            "botId": "{ボットID}",
             "voiceText": self.msg,
             "initTalkingFlag": false,
-            "initTopicId": "docomoapi"
+            "initTopicId": "{シナリオID}"
         ]
         
         Alamofire.request(URL, method: .post, parameters: parameters, encoding: JSONEncoding.default, headers: headers).validate().responseJSON { response in
             switch response.result {
             case .success(let value):
                 let json = JSON(value)
-                print(json)
-                self.response = json["systemText"]["expression"].stringValue
-                self.receiveMessage()
+                self.responseMsg = json["systemText"]["expression"].stringValue
+                self.saveReceiveMessage()
             case .failure(let error):
                 print(error)
             }
         }
     }
     
-    // メッセージに対して返答した内容をFirebaseに送信、保存する
-    func receiveMessage() {
-        let post2 = ["from": "user2", "name": "B", "text":response]
+    // 送信メッセージに対して返答した内容をFirebaseに保存する
+    func saveReceiveMessage() {
+        let post2 = ["from": "user2", "name": "B", "text": responseMsg]
         let post2Ref = self.ref.childByAutoId()
         post2Ref.setValue(post2)
     }
@@ -192,4 +187,3 @@ class ViewController: JSQMessagesViewController {
         return messages!.count
     }
 }
-
