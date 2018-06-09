@@ -7,19 +7,199 @@
 //
 
 import UIKit
+import Firebase
+import JSQMessagesViewController
+import Alamofire
+import SwiftyJSON
 
-class ViewController: UIViewController {
-
+class ViewController: JSQMessagesViewController {
+    
+    // データベースへの参照を定義
+    var ref: DatabaseReference!
+    
+    // メッセージ内容に関するプロパティ
+    var messages: [JSQMessage]?
+    // 背景画像に関するプロパティ
+    var incomingBubble: JSQMessagesBubbleImage!
+    var outgoingBubble: JSQMessagesBubbleImage!
+    // アバター画像に関するプロパティ
+    var incomingAvatar: JSQMessagesAvatarImage!
+    var outgoingAvatar: JSQMessagesAvatarImage!
+    
+    // 返答メッセージに関する辞書
+    let respond: [String:String] = [
+        "部屋のテイスト":"次のどのテイストのお部屋が好きですか？\nナチュラルor落ち着いたorクール"
+    ]
+    
+    // Repl-AIのユーザーIDを保存する変数
+    var id: String!
+    
     override func viewDidLoad() {
         super.viewDidLoad()
         // Do any additional setup after loading the view, typically from a nib.
+        
+        // クリーンアップツールバーの設定
+        self.inputToolbar!.contentView!.leftBarButtonItem = nil
+        // 新しいメッセージを受信するたびに下にスクロールする
+        self.automaticallyScrollsToMostRecentMessage = true
+        
+        // 自分のsenderId, senderDisplayNameを設定
+        self.senderId = "user1"
+        self.senderDisplayName = "A"
+        
+        // 吹き出しの設定
+        let bubbleFactory = JSQMessagesBubbleImageFactory()
+        self.incomingBubble = bubbleFactory?.incomingMessagesBubbleImage(with: UIColor.jsq_messageBubbleGreen())
+        self.outgoingBubble = bubbleFactory?.outgoingMessagesBubbleImage(with: UIColor.jsq_messageBubbleBlue())
+        
+        // アバターの設定
+        self.incomingAvatar = JSQMessagesAvatarImageFactory.avatarImage(with: UIImage(named: "snowman")!, diameter: 64)
+        self.outgoingAvatar = JSQMessagesAvatarImageFactory.avatarImage(with: UIImage(named: "santaclaus")!, diameter: 64)
+        
+        //メッセージデータの配列を初期化
+        self.messages = []
+        self.setupFirebase()
+        
+        // 過去のメッセージ取得後に会話開始時のメッセージを表示
+        DispatchQueue.main.asyncAfter(deadline: DispatchTime.now() + .seconds(2)) {
+            self.testRecvMessage(responseText: "何か手伝えることはありますか？\n部屋のテイストor部屋が狭いor家具の配置")
+        }
+        
+        // Repl-AIのユーザーID取得
+        userId()
+        
     }
-
+    
     override func didReceiveMemoryWarning() {
         super.didReceiveMemoryWarning()
         // Dispose of any resources that can be recreated.
     }
-
-
+    
+    // データベースからデータを取得する
+    func setupFirebase() {
+        // DatabaseReferenceのインスタンス化
+        self.ref = Database.database().reference()
+        
+        // 最新5件のデータをデータベースから取得する
+        // 最新のデータが追加されるたびに最新データを取得する
+        self.ref.queryLimited(toLast: 10).observe(DataEventType.childAdded, with: { (snapshot) -> Void in
+            let snapshotValue = snapshot.value as! NSDictionary
+            let text = snapshotValue["text"] as! String
+            let sender = snapshotValue["from"] as! String
+            let name = snapshotValue["name"] as! String
+            let message = JSQMessage(senderId: sender, displayName: name, text: text)
+            self.messages?.append(message!)
+            self.finishSendingMessage()
+        })
+    }
+    
+    // Sendボタンが押された時に呼ばれるメソッド
+    override func didPressSend(_ button: UIButton, withMessageText text: String, senderId: String, senderDisplayName: String, date: Date) {
+        
+        //メッセージの送信処理を完了する(画面上にメッセージが表示される)
+        self.finishReceivingMessage(animated: true)
+        
+        //Firebaseにデータを送信、保存する
+        let post1 = ["from": senderId, "name": senderDisplayName, "text":text]
+        let post1Ref = self.ref.childByAutoId()
+        post1Ref.setValue(post1)
+        self.finishSendingMessage(animated: true)
+        
+        // Sendの内容に合わせて返答内容を変更する
+        DispatchQueue.main.asyncAfter(deadline: DispatchTime.now() + .milliseconds(50)) {
+            guard let messageText = self.respond[text] else {
+                self.testRecvMessage(responseText: "選択肢の中から選んで入力してください！")
+                return
+            }
+            // 返答メッセージに関する辞書から値を取り出す
+            self.testRecvMessage(responseText: messageText)
+        }
+    }
+    
+    // メッセージに対して返答する
+    func testRecvMessage(responseText: String) {
+        let post2 = ["from": "user2", "name": "B", "text":responseText]
+        let post2Ref = self.ref.childByAutoId()
+        post2Ref.setValue(post2)
+    }
+    
+    // Repl-AIのユーザーIDを取得
+    func userId() {
+        let URL = "https://api.repl-ai.jp/v1/registration"
+        let headers = [
+            "Content-Type": "application/json",
+            "x-api-key": ""
+        ]
+        let parameters = [
+            "botId": "sample"
+        ]
+        
+        Alamofire.request(URL, method: .post, parameters: parameters, encoding: JSONEncoding.default, headers: headers).validate().responseJSON { response in
+            switch response.result {
+            case .success(let value):
+                let json = JSON(value)
+                print(json)
+                self.id = json["appUserId"].stringValue
+                self.dialogue()
+            case .failure(let error):
+                print(error)
+            }
+        }
+    }
+    
+    // Repl-AIの対話情報の取得
+    func dialogue() {
+        let URL = "https://api.repl-ai.jp/v1/dialogue"
+        let headers = [
+            "Content-Type": "application/json",
+            "x-api-key": ""
+        ]
+        let parameters: [String: Any] = [
+            "appUserId": self.id,
+            "botId": "sample",
+            "voiceText": "ランチ食べに行きたい",
+            "initTalkingFlag": false,
+            "initTopicId": "docomoapi"
+        ]
+        
+        Alamofire.request(URL, method: .post, parameters: parameters, encoding: JSONEncoding.default, headers: headers).validate().responseJSON { response in
+            switch response.result {
+            case .success(let value):
+                let json = JSON(value)
+                print(json)
+            case .failure(let error):
+                print(error)
+            }
+        }
+    
+    }
+    
+    // アイテムごとに参照するメッセージデータを返す
+    override func collectionView(_ collectionView: JSQMessagesCollectionView, messageDataForItemAt indexPath: IndexPath) -> JSQMessageData {
+        return messages![indexPath.item]
+    }
+    
+    // アイテムごとのMessageBubble(背景)を返す
+    override func collectionView(_ collectionView: JSQMessagesCollectionView, messageBubbleImageDataForItemAt indexPath: IndexPath) -> JSQMessageBubbleImageDataSource {
+        let message = self.messages?[indexPath.item]
+        if message?.senderId == self.senderId {
+            return self.outgoingBubble
+        }
+        return self.incomingBubble
+    }
+    
+    // アイテムごとにアバター画像を返す
+    override func collectionView(_ collectionView: JSQMessagesCollectionView, avatarImageDataForItemAt indexPath: IndexPath) -> JSQMessageAvatarImageDataSource? {
+        let message = self.messages?[indexPath.item]
+        if message?.senderId == self.senderId {
+            return self.outgoingAvatar
+        }
+        return self.incomingAvatar
+    }
+    
+    // アイテムの総数を返す
+    override func collectionView(_ collectionView: UICollectionView, numberOfItemsInSection section: Int) -> Int {
+        return messages!.count
+    }
 }
 
