@@ -37,7 +37,7 @@ class ViewController: JSQMessagesViewController {
         super.viewDidLoad()
         // Do any additional setup after loading the view, typically from a nib.
         
-        // クリーンアップツールバーの設定
+        // ツールバーの設定
         self.inputToolbar!.contentView!.leftBarButtonItem = nil
         // 新しいメッセージを受信するたびに下にスクロールする
         self.automaticallyScrollsToMostRecentMessage = true
@@ -52,8 +52,8 @@ class ViewController: JSQMessagesViewController {
         self.outgoingBubble = bubbleFactory?.outgoingMessagesBubbleImage(with: UIColor.jsq_messageBubbleBlue())
         
         // アバターの設定
-        self.incomingAvatar = JSQMessagesAvatarImageFactory.avatarImage(with: UIImage(named: "{アバター画像ファイル名}")!, diameter: 64)
-        self.outgoingAvatar = JSQMessagesAvatarImageFactory.avatarImage(with: UIImage(named: "{アバター画像ファイル名}")!, diameter: 64)
+        self.incomingAvatar = JSQMessagesAvatarImageFactory.avatarImage(with: UIImage(named: "{アバター画像のファイル名}")!, diameter: 64)
+        self.outgoingAvatar = JSQMessagesAvatarImageFactory.avatarImage(with: UIImage(named: "{アバター画像のファイル名}")!, diameter: 64)
         
         //メッセージデータの配列を初期化
         self.messages = []
